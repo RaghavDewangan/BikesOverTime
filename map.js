@@ -121,6 +121,14 @@ map.on('load', async () => {
 
         console.log(stations);
 
+        const radiusScale = d3
+        .scaleSqrt()
+        .domain([0, d3.max(stations, d => d.totalTraffic)])
+        .range([0, 25]);
+
+        circles.attr('r', d => radiusScale(d.totalTraffic));
+
+
 
     } catch (error) {
         console.error('Error loading JSON:', error); // Handle errors
