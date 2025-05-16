@@ -21,6 +21,52 @@ function getCoords(station) {
   return { cx: x, cy: y }; // Return as object for use in SVG attributes
 }
 
+function formatTime(minutes) {
+  const date = new Date(0, 0, 0, 0, minutes); // Set hours & minutes
+  return date.toLocaleString('en-US', { timeStyle: 'short' }); // Format as HH:MM AM/PM
+}
+
+function computeStationTraffic(stations, trips) {
+  // Compute departures
+  const departures = d3.rollup(
+    trips,
+    (v) => v.length,
+    (d) => d.start_station_id,
+  );
+
+  // Computed arrivals as you did in step 4.2
+  const arrivals = d3.rollup(
+    trips,
+    v => v.length,
+    d => d.end_station_id
+  );
+  // Update each station..
+  return stations.map((station) => {
+    let id = station.short_name;
+    station.arrivals = arrivals.get(id) ?? 0;
+    station.departures = departures.get(id) ?? 0;
+    station.totalTraffic = station.arrivals + station.departures;
+    return station;
+  });
+}
+
+function minutesSinceMidnight(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+
+function filterTripsByTime(trips, timeFilter) {
+  return timeFilter === -1
+    ? trips
+    : trips.filter((trip) => {
+        const startedMinutes = minutesSinceMidnight(trip.started_at);
+        const endedMinutes = minutesSinceMidnight(trip.ended_at);
+        return (
+          Math.abs(startedMinutes - timeFilter) <= 60 ||
+          Math.abs(endedMinutes - timeFilter) <= 60
+        );
+      });
+}
 
 map.on('load', async () => {
 
@@ -63,79 +109,129 @@ map.on('load', async () => {
         const jsonurl = 'https://dsc106.com/labs/lab07/data/bluebikes-stations.json';
         const csvurl = 'https://dsc106.com/labs/lab07/data/bluebikes-traffic-2024-03.csv'
         // await JSON fetch
-        const jsonData = await d3.json(jsonurl);
-        const trips = await d3.csv(csvurl);
+        jsonData = await d3.json(jsonurl);
+        trips = await d3.csv(
+            'https://dsc106.com/labs/lab07/data/bluebikes-traffic-2024-03.csv',
+            trip => {
+                trip.started_at = new Date(trip.started_at);
+                trip.ended_at = new Date(trip.ended_at);
+                return trip;
+            }
+        );
 
         let stations = jsonData.data.stations;
-        // console.log('Stations Array:', stations);
-        // console.log('Loaded CSV Data:', trips);
 
-        const svg = d3.select('#map').select('svg');
+        // Compute traffic
+        // const departures = d3.rollup(
+        // trips,
+        // (v) => v.length,
+        // (d) => d.start_station_id,
+        // );
 
-        const circles = svg
-        .selectAll('circle')
-        .data(stations)
-        .enter()
-        .append('circle')
-        .attr('r', 5) // Radius of the circle
-        .attr('fill', 'steelblue') // Circle fill color
-        .attr('stroke', 'white') // Circle border color
-        .attr('stroke-width', 1) // Circle border thickness
-        .attr('opacity', 0.8); // Circle opacity
-        
+        // const arrivals = d3.rollup(
+        // trips,
+        // (v) => v.length,
+        // (d) => d.end_station_id,
+        // );
 
-        // Function to update circle positions when the map moves/zooms
-        function updatePositions() {
-        circles
-            .attr('cx', (d) => getCoords(d).cx) // Set the x-position using projected coordinates
-            .attr('cy', (d) => getCoords(d).cy); // Set the y-position using projected coordinates
-        }
+        // stations = stations.map((station) => {
+        // let id = station.short_name;
+        // station.arrivals = arrivals.get(id) ?? 0;
+        // station.departures = departures.get(id) ?? 0;
+        // station.totalTraffic = station.arrivals + station.departures;
+        // return station;
+        // });
 
-        // Initial position update when map loads
-        updatePositions();
+        stations = computeStationTraffic(stations, trips);
 
-        map.on('move', updatePositions); // Update during map movement
-        map.on('zoom', updatePositions); // Update during zooming
-        map.on('resize', updatePositions); // Update on window resize
-        map.on('moveend', updatePositions); // Final adjustment after movement ends
+        // console.log(stations);
 
-        const departures = d3.rollup(
-        trips,
-            (v) => v.length,
-            (d) => d.start_station_id,
-        );
-
-        const arrivals = d3.rollup(
-        trips,
-            (v) => v.length,
-            (d) => d.end_station_id,
-        );
-
-        stations = stations.map((station) => {
-        let id = station.short_name;
-        station.arrivals = arrivals.get(id) ?? 0;
-        station.departures = departures.get(id) ?? 0;
-        station.totalTraffic = station.arrivals + station.departures;
-
-        return station;
-        });
-
-        console.log(stations);
-
+        // Create scale for circle radius
         const radiusScale = d3
         .scaleSqrt()
         .domain([0, d3.max(stations, d => d.totalTraffic)])
         .range([0, 25]);
 
-        circles.attr('r', d => radiusScale(d.totalTraffic));
+        // Create circles *after* data is enriched
+        const svg = d3.select('#map').select('svg');
 
+        const circles = svg
+        .selectAll('circle')
+        .data(stations, (d) => d.short_name)
+        .enter()
+        .append('circle')
+        .attr('fill', 'steelblue')
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1)
+        .attr('opacity', 0.8)
+        .attr('r', d => radiusScale(d.totalTraffic));
+
+        // Add tooltips
         circles.each(function (d) {
         d3.select(this)
             .append('title')
             .text(`${d.totalTraffic} trips (${d.departures} departures, ${d.arrivals} arrivals)`);
         });
 
+        // Position circles
+        function updatePositions() {
+        circles
+            .attr('cx', (d) => getCoords(d).cx)
+            .attr('cy', (d) => getCoords(d).cy);
+        }
+        updatePositions();
 
+        map.on('move', updatePositions);
+        map.on('zoom', updatePositions);
+        map.on('resize', updatePositions);
+        map.on('moveend', updatePositions);
+
+        const timeSlider = document.getElementById('time-slider');
+        const selectedTime = document.getElementById('selected-time');
+        const anyTimeLabel = document.getElementById('any-time');
+
+        let timeFilter = -1;
+
+        function updateTimeDisplay() {
+            timeFilter = Number(timeSlider.value);
+
+            if (timeFilter === -1) {
+                selectedTime.textContent = '';
+                anyTimeLabel.style.display = 'block';
+            } else {
+                selectedTime.textContent = formatTime(timeFilter);
+                anyTimeLabel.style.display = 'none';
+            }
+
+            // TODO: trigger filtering logic based on timeFilter
+            updateScatterPlot(timeFilter);
+        }
+
+        function updateScatterPlot(timeFilter) {
+            // Step 1: Filter the trips
+            const filteredTrips = filterTripsByTime(trips, timeFilter);
+
+            // Step 2: Recompute traffic
+            const filteredStations = computeStationTraffic(stations, filteredTrips);
+
+            // ✅ Step 3: Adjust circle size scale dynamically
+            if (timeFilter === -1) {
+                radiusScale.range([0, 25]);
+            } else {
+                radiusScale.range([3, 50]);
+            }
+
+            // Step 4: Update circle sizes with key tracking
+            circles
+                .data(filteredStations, d => d.short_name)
+                .join('circle')
+                .transition()
+                .duration(100)
+                .attr('r', d => radiusScale(d.totalTraffic));
+        }
+
+        timeSlider.addEventListener('input', updateTimeDisplay);
+        updateTimeDisplay();
 
 
     } catch (error) {
