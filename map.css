@@ -25,10 +25,49 @@ body {
 }
 
 svg circle {
-  fill: steelblue;
+  --color-departures: steelblue;
+  --color-arrivals: darkorange;
+
+  --color: color-mix(
+    in oklch,
+    var(--color-departures) calc(100% * var(--departure-ratio)),
+    var(--color-arrivals)
+  );
+
+  fill: var(--color);
   fill-opacity: 0.6;
   stroke: white;
   stroke-width: 1px;
   pointer-events: auto;
 }
 
+#map svg circle,
+.legend > div {
+  --color-departures: steelblue;
+  --color-arrivals: darkorange;
+  --color: color-mix(
+    in oklch,
+    var(--color-departures) calc(100% * var(--departure-ratio)),
+    var(--color-arrivals)
+  );
+}
+
+.legend {
+  display: flex;
+  width: 100%;
+  margin-block: 1em;
+  gap: 1px; /* small visual gap between swatches */
+  font-weight: bold;
+  text-align: center;
+  font-size: 0.9em;
+  border-radius: 8px;
+  overflow: hidden; /* makes border-radius apply cleanly */
+}
+
+.legend > div {
+  flex: 1;
+  background: var(--color);
+  padding: 0.8em 1em;
+  color: white;
+  justify-content: center;
+}
