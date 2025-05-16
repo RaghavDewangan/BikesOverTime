@@ -68,6 +68,11 @@ function filterTripsByTime(trips, timeFilter) {
       });
 }
 
+const stationFlow = d3
+  .scaleQuantize()
+  .domain([0, 1]) // Ratio of departures to total traffic
+  .range([0, 0.5, 1]); // Output categories (for example: fewer, balanced, more departures)
+
 map.on('load', async () => {
 
     map.addSource('boston_route', {
@@ -164,7 +169,12 @@ map.on('load', async () => {
         .attr('stroke', 'white')
         .attr('stroke-width', 1)
         .attr('opacity', 0.8)
-        .attr('r', d => radiusScale(d.totalTraffic));
+        .attr('r', d => radiusScale(d.totalTraffic))
+        .style('--departure-ratio', (d) =>
+            d.totalTraffic === 0
+            ? 0.5
+            : stationFlow(d.departures / d.totalTraffic)
+        );
 
         // Add tooltips
         circles.each(function (d) {
@@ -227,7 +237,12 @@ map.on('load', async () => {
                 .join('circle')
                 .transition()
                 .duration(100)
-                .attr('r', d => radiusScale(d.totalTraffic));
+                .attr('r', d => radiusScale(d.totalTraffic))
+                .style('--departure-ratio', (d) =>
+                    d.totalTraffic === 0
+                    ? 0.5
+                    : stationFlow(d.departures / d.totalTraffic)
+                );
         }
 
         timeSlider.addEventListener('input', updateTimeDisplay);
